@@ -39,16 +39,17 @@ class Shape(object):
         raise NotImplementedError
 
 class Text(Shape):
+    '''Represents some text'''
     def __init__(self, pos, size):
         Shape.__init__(self, pos, size)
     def setText(self, text):
         self.text = text
     def drawSelf(self, dc):
         dc.SetTextForeground((255, 255, 0))
-        x, y = pos
-        dc.DrawText("Hello World", x, y)
+        dc.DrawText("Hello World", pos[0], pos[1])
         
 class Circle(Shape):
+    '''Represents a circle'''
     def __init__(self, pos, size):
         Shape.__init__(self, pos, size)
     def setPosition(self, pos):
@@ -72,7 +73,6 @@ class Circle(Shape):
             else:            
                 dc.SetBrush(wx.Brush(self.colour, wx.SOLID))
         dc.DrawCircle(self.x, self.y, self.rad)
-        dc.SetTextForeground((255,255,0))
         dc.EndDrawing()
     
 class RandomCircle(Circle):
@@ -90,8 +90,8 @@ class Rect(Shape):
     def setSize(self, size):
         self.width, self.height = size
     def getBounds(self):
-        print "Params: x: %s y: %s width: %s height: %s" % (self.x, self.y, self.width, self.height)
-        print "bounds: x1: %s y1: %s x2: %s y2: %s" % (self.x, self.y, self.width, self.height)
+        # print "Params: x: %s y: %s width: %s height: %s" % (self.x, self.y, self.width, self.height)
+        # print "bounds: x1: %s y1: %s x2: %s y2: %s" % (self.x, self.y, self.width, self.height)
         return wx.Rect(self.x, self.y, self.width, self.height)
     def contains(self, x, y):
         return self.getBounds().InsideXY(x, y)
@@ -142,10 +142,7 @@ class Frame(wx.Frame):
         if self.state == "POSSIBLE_DRAG" and e.LeftIsDown():
             self.state = "DRAGGING"
             self.selectedShape.setState(self.state)
-            print "%s" % (self.state)
         elif self.state == "DRAGGING" and e.LeftIsDown():
-            print "repeated event!"
-            print "%s" % (self.state)
             newX, newY = e.GetPosition()
             oldX, oldY = self.lastPosition
             self.selectedShape.moveBy(newX - oldX, newY - oldY)
@@ -153,33 +150,27 @@ class Frame(wx.Frame):
             self.Refresh()
         else:
             self.state = "MOTION"
-
     def guessSelectedShape(self, e):
         x, y = e.GetPosition()
         self.clickedShapes = [s for s in self.shapes if s.contains(x, y)]
         self.clickedShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
-        print "clickedShapes: %s" % (self.clickedShapes)
+        # print "clickedShapes: %s" % (self.clickedShapes)
         if e.ShiftDown():
             if len(self.clickedShapes) > 1:
                 return self.clickedShapes[1]
         else:
             return self.clickedShapes[0]
-
     def OnClick(self, e):
         x, y = e.GetPosition()
         for s in self.clickedShapes:
             s.setClicked(False)
         del self.clickedShapes[:]
-        print "OnClick (%s, %s)" % (x, y) 
-        # is there a more efficient way of doing this?
-
-
+        # print "OnClick (%s, %s)" % (x, y) 
         self.selectedShape = self.guessSelectedShape(e)
         self.selectedShape.setClicked(True)
-
         self.state = "POSSIBLE_DRAG"
         self.lastPosition = (x, y)
-        print "Shape %s has a hit" % (self.clickedShapes[0])
+        # print "Shape %s has a hit" % (self.clickedShapes[0])
         self.Refresh()
         e.Skip() # recommended practise        
     def OnRelease(self,e):
@@ -190,12 +181,9 @@ class Frame(wx.Frame):
             self.state=="MOTION"
             self.selectedShape.setState("NORMAL")
             self.Refresh()
-        print "Released"
-        pass
     def OnTimer(self, e):
         self.Refresh()
     def OnPaint(self, e):
-        print "OnPaint called"
         dc = wx.PaintDC(self)
         for i in self.shapes:
             i.drawself(dc)
