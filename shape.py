@@ -6,13 +6,15 @@ import operator
 class Shape(object):
     """Represents a basic shape"""
     nextZOrder = itertools.count().next
-    def __init__(self, pos, size):
+    def __init__(self, pos, size, droptarget=False):
         self.setPosition(pos)
         self.setSize(size)
         self.isClicked = False
         self.zOrder = Shape.nextZOrder()
         self.state = "NORMAL"
         self.label = "UNTITLED"        
+        self.fillColour = (0, 0, 0)
+        self.droptarget = droptarget
     def setPosition(self, pos):
         raise NotImplementedError
     def setSize(self, size):
@@ -37,7 +39,12 @@ class Shape(object):
         self.label = label
     def drawSelf(self):
         raise NotImplementedError
+    def setfillColour(self, colour):
+        self.fillColour = colour
+    def isDropTarget(self):
+        return self.droptarget
 
+    
 class Text(Shape):
     '''Represents some text'''
     def __init__(self, pos, size):
@@ -83,8 +90,8 @@ class RandomCircle(Circle):
         self.colour = (random.randrange(256), random.randrange(256), random.randrange(256))
 
 class Rect(Shape):
-    def __init__(self, pos, size):
-        Shape.__init__(self, pos, size)        
+    def __init__(self, pos, size, droptarget=False):
+        Shape.__init__(self, pos, size, droptarget=droptarget)        
     def setPosition(self, pos):
         self.x, self.y = pos
     def setSize(self, size):
@@ -107,16 +114,16 @@ class Rect(Shape):
             if self.isClicked:
                 dc.SetBrush(wx.Brush((30,30,30), wx.SOLID))
             else:            
-                dc.SetBrush(wx.Brush(self.colour, wx.SOLID))
+                dc.SetBrush(wx.Brush(self.fillColour, wx.SOLID))
         dc.DrawRectangle(self.x, self.y, self.width, self.height)
         dc.EndDrawing()
         
 class RandomRect(Rect):
-    def __init__(self):
+    def __init__(self, droptarget=False):
         pos = (random.randrange(300), random.randrange(300))
         size = (random.randrange(500), random.randrange(500))
-        Rect.__init__(self, pos, size)
-        self.colour = (random.randrange(256), random.randrange(256), random.randrange(256))
+        Rect.__init__(self, pos, size, droptarget=droptarget)
+        self.fillColour = (random.randrange(256), random.randrange(256), random.randrange(256))
 
 class Frame(wx.Frame):
     def __init__(self, parent, title, size=wx.DefaultSize):
@@ -133,6 +140,8 @@ class Frame(wx.Frame):
         self.generateShapes()
         self.clickedShapes = list()
         self.state="MOTION"
+        t = RandomRect(droptarget="True")
+        self.shapes.append(t)
     def generateShapes(self):
         for i in range(10):
             self.shapes.append(RandomRect())
@@ -177,7 +186,12 @@ class Frame(wx.Frame):
         if self.state=="DRAGGING":
             newX, newY = e.GetPosition()
             oldX, oldY = self.lastPosition
-            self.clickedShapes[0].moveBy(newX-oldX, newY-oldY)
+            self.selectedShape.moveBy(newX-oldX, newY-oldY)
+            self.targetShapes = [s for s in self.shapes if s.contains(newX, newY) and s is not self.selectedShape]
+            self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
+            if self.targetShapes[0].isDropTarget():
+                print "DO SOMETHING WITH THE DROPPED OBJECT"
+            #print "DROPPED"
             self.state=="MOTION"
             self.selectedShape.setState("NORMAL")
             self.Refresh()
@@ -187,6 +201,8 @@ class Frame(wx.Frame):
         dc = wx.PaintDC(self)
         for i in self.shapes:
             i.drawself(dc)
+
+
             
 def main():
     app = wx.App(redirect=False)
