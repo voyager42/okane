@@ -1,12 +1,59 @@
 import wx
 import random
 import itertools
+import math
+import cmath
 
-class Shape(object):
+gravity = (0,math.pi) #(10, math.pi)
+drag = 0.99 # should be a vector too?
+
+def calcMouseVelocity(posOld, posNew):
+    "Computes the velocity of the mouse"
+    dX = posNew[0] - posOld[0]
+    dY = posNew[1] - posOld[1]
+    print "dX = %s" % (dX)
+    print "dY = %s" % (dY)
+    angle = math.atan2(dY, dX) + 0.5*math.pi
+    speed = 0.05* math.hypot(dX, dY)
+    print "Speed = %s, Angle = %s deg" % (speed, math.degrees(angle))
+    return (speed, angle)
+
+def addVectors(v1, v2, *kwargs):
+    "Add 2 vectors given in (r, phi) form"
+    r1, phi1 = v1
+    r2, phi2 = v2
+    return cmath.polar(cmath.rect(r1, phi1) + cmath.rect(r2, phi2))
+
+class Particle(object):
+    """Represents a particle"""
+    def __init__(self, pos=(0,0), mass=1.0, velocity=(0,0)):
+        self.velocity = velocity  # (magnitude, angle in radians)
+        if velocity:
+            print "Particle got velocity %s, %s" % (velocity)
+
+        self.mass = mass
+        self.position = pos
+
+    def updatePosition(self): # was updatePosition
+        speed1 = self.velocity[0] * drag
+        angle1 = self.velocity[1]
+        # (speed, angle) = addVectors((speed1, angle1), gravity)
+        (speed, angle) = (speed1, angle1)
+        dx = math.sin(angle) * speed
+        dy = -1*math.cos(angle) * speed
+        self.velocity = (speed, angle)
+        self.moveBy(dx, dy)
+
+    def moveBy(self, deltaX, deltaY):
+        currentX, currentY = self.position
+        self.position = (currentX + deltaX, currentY + deltaY)
+        
+class Shape(Particle):
     """Represents a basic shape"""
     nextZOrder = itertools.count().next
-    def __init__(self, pos, size, droptarget=False):
-        self.position = pos
+
+    def __init__(self, pos, size, droptarget=False, velocity=(0,0)):
+        Particle.__init__(self, pos=pos, velocity=velocity)
         self.size = size
         self.isClicked = self.isRightClicked = False
         self.zOrder = Shape.nextZOrder()
@@ -14,53 +61,42 @@ class Shape(object):
         self.label = "UNTITLED"        
         self.fillColour = (0, 0, 0)
         self.isDropTarget = droptarget
-        self.velocity = (0, 0)
-        self.drag = (1, 1)
         #velocity = vel
         #self.mass = mass
+
     def __repr__(self):
         return "Shape(bounds=%r)" % (self.getBounds()) 
+
     def contains(self):
         raise NotImplementedError
+
     def generateList(self, num):
         raise NotImplementedError
+
     def moveTo(self, pos):
         self.position = pos
-    def moveBy(self, deltaX, deltaY):
-        currentX, currentY = self.position
-        self.position = (currentX + deltaX, currentY + deltaY)
+
     def drawSelf(self):
         raise NotImplementedError
-    def updatePosition(self):
-        velX, velY = self.velocity
-        speedX = abs(velX)
-        speedY = abs(velY)
-
-        velX = velX*(self.mass)
-        velY = velY*(self.mass)
-            
-        if abs(velX) < 0.001:
-            velX = 0
-        if abs(velY) < 0.001:
-            velY = 0
-        self.moveBy(velX, velY)
-        self.velocity = (velX, velY)
-
     
 class Text(Shape):
     '''Represents some text'''
     def __init__(self, pos, size):
         Shape.__init__(self, pos, size)
+
     def drawSelf(self, dc):
         dc.SetTextForeground((255, 255, 0))
         dc.DrawText("Hello World", pos[0], pos[1])
+
         
 class Circle(Shape):
     '''Represents a circle'''
-    def __init__(self, pos, size):
-        Shape.__init__(self, pos, size)
+    def __init__(self, pos, size, **kwargs):
+        Shape.__init__(self, pos, size, **kwargs)
+
     def contains(self, x, y):
         return ((x - self.position[0])**2 + (y - self.position[1])**2 <= self.rad**2)
+
     def __repr__(self):
         return "Circle(x=%r, y=%r, rad=%r)" % (self.position[0], self.position[1], self.rad)
     def drawself(self, dc):
@@ -79,23 +115,30 @@ class Circle(Shape):
         dc.EndDrawing()
     
 class RandomCircle(Circle):
-    def __init__(self):
+    def __init__(self, startMoving=False):
         self.position = (random.randrange(300), random.randrange(300))
         self.rad = random.randrange(10, 150)
-        Circle.__init__(self, self.position, self.rad)
+        if startMoving:
+            velocity = (3*random.random(), random.uniform(0, math.pi*2))
+        else:
+            velocity=(0,0)
+        Circle.__init__(self, self.position, self.rad, velocity=velocity)
         self.fillColour = (random.randrange(256), random.randrange(256), random.randrange(256))
 
 class Rect(Shape):
-    def __init__(self, pos, size, droptarget=False):
-        Shape.__init__(self, pos, size, droptarget=droptarget) 
+    def __init__(self, pos, size, droptarget=False, **kwargs):
+        Shape.__init__(self, pos, size, droptarget=droptarget, **kwargs) 
+
     def getBounds(self):
         # print "Params: x: %s y: %s width: %s height: %s" % (self.position[0], self.position[1], self.size[0], self.size[1])
         # print "bounds: x1: %s y1: %s x2: %s y2: %s" % (self.position[0], self.position[1], self.size[0], self.size[1])
         return wx.Rect(self.position[0], self.position[1], self.size[0], self.size[1])
     def contains(self, x, y):
         return self.getBounds().InsideXY(x, y)
+
     def __repr__(self):
         return "Rect(x=%r, y=%r, width=%r, height=%r)" % (self.position[0], self.position[1], self.size[0], self.size[1])
+
     def drawself(self, dc):
         dc.BeginDrawing()
         if self.frameState == "LEFT_DRAGGING": # state should include clicked status too
@@ -111,10 +154,14 @@ class Rect(Shape):
         dc.EndDrawing()
         
 class RandomRect(Rect):
-    def __init__(self, droptarget=False):
-        pos = (random.randrange(300), random.randrange(300))
-        size = (random.randrange(500), random.randrange(500))
-        Rect.__init__(self, pos, size, droptarget=droptarget)
+    def __init__(self, droptarget=False, startMoving=False):
+        self.position = (random.randrange(300), random.randrange(300))
+        self.size = (random.randrange(500), random.randrange(500))
+        if startMoving:
+            velocity = (3*random.random(), random.uniform(0, math.pi*2))
+        else:
+            velocity = (0,0)
+        Rect.__init__(self, self.position, self.size, droptarget=droptarget, velocity=velocity)
         self.fillColour = (random.randrange(256), random.randrange(256), random.randrange(256))
 
 class Frame(wx.Frame):
@@ -129,48 +176,30 @@ class Frame(wx.Frame):
         self.Bind(wx.EVT_RIGHT_UP, self.OnRelease)
         self.Bind(wx.EVT_MOTION, self.OnMotion)
         self.timer = wx.Timer(self)
-        self.timer.Start(100) # 1000 milliseconds = 1 second
+        self.timer.Start(10) # 1000 milliseconds = 1 second
         self.shapes = list()
-        #self.generateShapes()
         self.clickedShapes = list()
         self.rightClickedShapes = list()
         self.frameState="NORMAL"
-        
-        t = RandomRect(droptarget="True")
-        t.velocity = (0,0)
-        t.mass = 1.0
+        #self.generateShapes()
+        t = RandomRect()
         self.shapes.append(t)
         t = RandomCircle()
-        t.velocity = (0,0)
-        t.mass = 0.5
         self.shapes.append(t)
+        self.lastMovePosition = (0,0)
         
     def generateShapes(self):
         for i in range(10):
-            self.shapes.append(RandomRect())
+            self.shapes.append(RandomRect(startMoving=True))
         for i in range(10):
-            self.shapes.append(RandomCircle())
-    def OnMotion(self, e):
-        if self.frameState == "POSSIBLE_LEFT_DRAG" and e.LeftIsDown():
-            self.frameState = self.selectedShape.state = "LEFT_DRAGGING"
-        elif self.frameState == "LEFT_DRAGGING" and e.LeftIsDown(): 
-            # or ((self.frameState == "RIGHT_DRAGGING" and e.RightIsDown()):
-            newX, newY = e.GetPosition()
-            oldX, oldY = self.lastPosition
-            deltaX = newX - oldX
-            deltaY = newY - oldY
-            
-            if (abs(deltaX) > 10) or (abs(deltaY) > 10):            
-                print "MOVING"
-                self.selectedShape.moveBy(deltaX, deltaY)
-                self.lastPosition = e.GetPosition()
-            self.Refresh()
-        else:
-            self.frameState = "MOTION"
+            self.shapes.append(RandomCircle(startMoving=True))
+
     def isLeftClick(self, e):
         return (e.GetButton() == wx.MOUSE_BTN_LEFT)
+
     def isRightClick(self, e):
         return (e.GetButton() == wx.MOUSE_BTN_RIGHT)
+
     def guessSelectedShape(self, e):
         x, y = e.GetPosition()
         if self.isLeftClick(e):
@@ -203,7 +232,23 @@ class Frame(wx.Frame):
                     for s in self.shapes:
                         s.state = "NORMAL"
                     return None
-        
+
+    def OnMotion(self, e):
+        newX, newY = e.GetPosition()
+        if self.frameState == "POSSIBLE_LEFT_DRAG" and e.LeftIsDown():
+            self.frameState = self.selectedShape.state = "LEFT_DRAGGING"
+        elif self.frameState == "LEFT_DRAGGING" and e.LeftIsDown(): 
+            # or ((self.frameState == "RIGHT_DRAGGING" and e.RightIsDown()):
+            oldX, oldY = self.lastMovePosition
+            deltaX = newX - oldX
+            deltaY = newY - oldY
+            self.selectedShape.moveBy(deltaX, deltaY)
+        else:
+            self.frameState = "MOTION"
+            calcMouseVelocity(self.lastMovePosition, (newX, newY))
+        self.lastMovePosition = e.GetPosition()
+        self.Refresh()
+
     def OnClick(self, e):
         x, y = e.GetPosition()
         if self.isLeftClick(e):
@@ -216,6 +261,7 @@ class Frame(wx.Frame):
             try:
                 self.selectedShape.isClicked=True
                 self.frameState = self.selectedShape.state = "POSSIBLE_LEFT_DRAG"
+                self.selectedShape.velocity =(0,0)
             except:
                 pass
         elif self.isRightClick(e):
@@ -238,24 +284,30 @@ class Frame(wx.Frame):
             newX, newY = e.GetPosition()
             oldX, oldY = self.lastPosition
             deltaX = newX - oldX
-            deltaY = newY - oldY            
-            if (abs(deltaX) > 10) or (abs(deltaY) > 10):
-                self.selectedShape.moveBy(deltaX, deltaY)
-            self.targetShapes = [s for s in self.shapes if s.contains(newX, newY) and s is not self.selectedShape]
-            self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
-            try:
-                shape = self.targetShapes[0]
-                if self.targetShapes[0].isDropTarget():
-                    print "DO SOMETHING WITH THE DROPPED OBJECT"
-                    #print "DROPPED"
-                    self.frameState="MOTION"
+            deltaY = newY - oldY    
+            if self.selectedShape:                
+                self.targetShapes = [s for s in self.shapes if s.contains(newX, newY) and s is not self.selectedShape]
+                self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
+                try:
+                    shape = self.targetShapes[0]
+                    if self.targetShapes[0].isDropTarget():
+                        print "DO SOMETHING WITH THE DROPPED OBJECT"
+                        #print "DROPPED"
+                        self.selectedShape.state="NORMAL"
+                        self.frameState="NORMAL"
+                except:
+                    print "NO TARGET SHAPE"
+                print "=================== VELOCITY "
+                self.selectedShape.velocity=calcMouseVelocity((oldX,oldY), (newX, newY))
+                self.selectedShape.isClicked = False
                 self.selectedShape.state="NORMAL"
-            except:
-                print "NO TARGET SHAPE"
-                
-            self.Refresh()
+                self.frameState="NORMAL"
+                self.selectedShape = None
+        self.Refresh()
+
     def OnTimer(self, e):
         self.Refresh()
+
     def OnPaint(self, e):
         dc = wx.PaintDC(self)
         for i in self.shapes:
