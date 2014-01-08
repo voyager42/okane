@@ -3,7 +3,15 @@ import random
 import itertools
 import math
 import cmath
+import logging
+import logging.config
 
+logging.config.fileConfig('logging.conf')
+motionlog=logging.getLogger('motion')
+motionlog.setLevel(logging.DEBUG)
+
+eventlog = logging.getLogger('event')
+eventlog.setLevel(logging.INFO)
 gravity = (0,math.pi) #(10, math.pi)
 drag = 0.99 # should be a vector too?
 
@@ -11,12 +19,15 @@ def calcMouseVelocity(posOld, posNew):
     "Computes the velocity of the mouse"
     dX = posNew[0] - posOld[0]
     dY = posNew[1] - posOld[1]
-    print "dX = %s" % (dX)
-    print "dY = %s" % (dY)
+    motionlog.debug("dX = %s" % (dX))
+    motionlog.debug("dY = %s" % (dY))
     angle = math.atan2(dY, dX) + 0.5*math.pi
     speed = 0.05* math.hypot(dX, dY)
-    print "Speed = %s, Angle = %s deg" % (speed, math.degrees(angle))
-    return (speed, angle)
+    motionlog.debug("Speed = %s, Angle = %s deg" % (speed, math.degrees(angle)))
+    if speed*speed < 10:
+        return (speed, angle)
+    else:
+        return (0,0)
 
 def addVectors(v1, v2, *kwargs):
     "Add 2 vectors given in (r, phi) form"
@@ -29,7 +40,7 @@ class Particle(object):
     def __init__(self, pos=(0,0), mass=1.0, velocity=(0,0)):
         self.velocity = velocity  # (magnitude, angle in radians)
         if velocity:
-            print "Particle got velocity %s, %s" % (velocity)
+            motionlog.debug("Particle got velocity %s, %s" % (velocity))
 
         self.mass = mass
         self.position = pos
@@ -47,7 +58,9 @@ class Particle(object):
     def moveBy(self, deltaX, deltaY):
         currentX, currentY = self.position
         self.position = (currentX + deltaX, currentY + deltaY)
-        
+        # if (deltaX,deltaY) == (0,0):
+        #     eventlog.info("STOPPED")
+
 class Shape(Particle):
     """Represents a basic shape"""
     nextZOrder = itertools.count().next
@@ -78,7 +91,7 @@ class Shape(Particle):
 
     def drawSelf(self):
         raise NotImplementedError
-    
+
 class Text(Shape):
     '''Represents some text'''
     def __init__(self, pos, size):
@@ -88,7 +101,7 @@ class Text(Shape):
         dc.SetTextForeground((255, 255, 0))
         dc.DrawText("Hello World", pos[0], pos[1])
 
-        
+
 class Circle(Shape):
     '''Represents a circle'''
     def __init__(self, pos, size, **kwargs):
@@ -98,7 +111,7 @@ class Circle(Shape):
         return ((x - self.position[0])**2 + (y - self.position[1])**2 <= self.rad**2)
 
     def __repr__(self):
-        return "Circle(x=%r, y=%r, rad=%r)" % (self.position[0], self.position[1], self.rad)
+        return "Circle(x=%r, y=%r, rad=%r, droptarget=%r)" % (self.position[0], self.position[1], self.rad, self.isDropTarget)
     def drawself(self, dc):
         dc.BeginDrawing()
         dc.SetPen(wx.Pen("BLACK",1))
@@ -130,14 +143,16 @@ class Rect(Shape):
         Shape.__init__(self, pos, size, droptarget=droptarget, **kwargs) 
 
     def getBounds(self):
-        # print "Params: x: %s y: %s width: %s height: %s" % (self.position[0], self.position[1], self.size[0], self.size[1])
-        # print "bounds: x1: %s y1: %s x2: %s y2: %s" % (self.position[0], self.position[1], self.size[0], self.size[1])
+        # motionlog.debug("Params: x: %s y: %s width: %s height: %s" % (self.position[0], self.position[1], self.size[0], self.size[1]))
+        # motionlog.debug("bounds: x1: %s y1: %s x2: %s y2: %s" % (self.position[0], self.position[1], self.size[0], self.size[1]))
         return wx.Rect(self.position[0], self.position[1], self.size[0], self.size[1])
     def contains(self, x, y):
+        if self.getBounds().InsideXY(x, y):
+            eventlog.debug("%s contains %s,%s", self, x, y)
         return self.getBounds().InsideXY(x, y)
 
     def __repr__(self):
-        return "Rect(x=%r, y=%r, width=%r, height=%r)" % (self.position[0], self.position[1], self.size[0], self.size[1])
+        return "Rect(x=%r, y=%r, width=%r, height=%r, droptarget=%r)" % (self.position[0], self.position[1], self.size[0], self.size[1], self.isDropTarget)
 
     def drawself(self, dc):
         dc.BeginDrawing()
@@ -182,12 +197,15 @@ class Frame(wx.Frame):
         self.rightClickedShapes = list()
         self.frameState="NORMAL"
         #self.generateShapes()
+#        t = Rect((10,10),(70,70))
         t = RandomRect()
         self.shapes.append(t)
-        t = RandomCircle()
+ #       t = Rect((0,0), (30,30))
+        t = RandomRect()
         self.shapes.append(t)
         self.lastMovePosition = (0,0)
-        
+        self.selectedShape = None
+
     def generateShapes(self):
         for i in range(10):
             self.shapes.append(RandomRect(startMoving=True))
@@ -205,7 +223,7 @@ class Frame(wx.Frame):
         if self.isLeftClick(e):
             self.clickedShapes = [s for s in self.shapes if s.contains(x, y)]
             self.clickedShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
-            print "clickedShapes: %s" % (self.clickedShapes)
+            eventlog.info("clickedShapes: %s" % (self.clickedShapes))
             if e.ShiftDown():
                 if len(self.clickedShapes) > 1:
                     return self.clickedShapes[1]
@@ -220,7 +238,7 @@ class Frame(wx.Frame):
         if self.isRightClick(e):
             self.rightClickedShapes = [s for s in self.shapes if s.contains(x, y)]
             self.rightClickedShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
-            print "rightClickedShapes: %s" % (self.rightClickedShapes)
+            eventlog.info("rightClickedShapes: %s" % (self.rightClickedShapes))
             if e.ShiftDown():
                 if len(self.rightClickedShapes) > 1:
                     return self.rightClickedShapes[1]
@@ -256,7 +274,7 @@ class Frame(wx.Frame):
                 s.isClicked=False
                 s.state="NORMAL"
             del self.clickedShapes[:]
-            # print "OnClick (%s, %s)" % (x, y) 
+            # motionlog.debug("OnClick (%s, %s)" % (x, y)
             self.selectedShape = self.guessSelectedShape(e)
             try:
                 self.selectedShape.isClicked=True
@@ -265,7 +283,7 @@ class Frame(wx.Frame):
             except:
                 pass
         elif self.isRightClick(e):
-            print "RIGHT CLICK"
+            eventlog.info("RIGHT CLICK")
             for s in self.rightClickedShapes:
                 s.isRightClicked=False
             del self.rightClickedShapes[:]
@@ -275,34 +293,38 @@ class Frame(wx.Frame):
             except:
                 pass
         self.lastPosition = (x, y)
-        # print "Shape %s has a hit" % (self.clickedShapes[0])
+        # motionlog.debug("Shape %s has a hit" % (self.clickedShapes[0])
         self.Refresh()
-        e.Skip() # recommended practise        
+        e.Skip() # recommended practice
 
     def OnRelease(self,e):
         if self.frameState=="LEFT_DRAGGING":
             newX, newY = e.GetPosition()
             oldX, oldY = self.lastPosition
             deltaX = newX - oldX
-            deltaY = newY - oldY    
-            if self.selectedShape:                
-                self.targetShapes = [s for s in self.shapes if s.contains(newX, newY) and s is not self.selectedShape]
-                self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
-                try:
-                    shape = self.targetShapes[0]
-                    if self.targetShapes[0].isDropTarget():
-                        print "DO SOMETHING WITH THE DROPPED OBJECT"
-                        #print "DROPPED"
-                        self.selectedShape.state="NORMAL"
-                        self.frameState="NORMAL"
-                except:
-                    print "NO TARGET SHAPE"
-                print "=================== VELOCITY "
-                self.selectedShape.velocity=calcMouseVelocity((oldX,oldY), (newX, newY))
+            deltaY = newY - oldY
+            if self.selectedShape != None:
+                eventlog.info("RELEASING SELECTED SHAPE")
+                self.targetShapes = [s for s in self.shapes if s is not self.selectedShape and s.contains(newX, newY)]
+                if len(self.targetShapes) > 0:
+                    self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
+                    s=self.targetShapes[0]
+                    eventlog.info("TARGET SHAPE : %s", s)
+                    try:
+                        if s.isDropTarget:
+                            eventlog.info("DO SOMETHING WITH THE DROPPED OBJECT")
+                        else:
+                            eventlog.info("%s is not a drop target ", s)
+                        #motionlog.debug("DROPPED")
+                            self.selectedShape.state="NORMAL"
+                            self.frameState="NORMAL"
+                    except:
+                        eventlog.info("NO TARGET SHAPE")
                 self.selectedShape.isClicked = False
                 self.selectedShape.state="NORMAL"
                 self.frameState="NORMAL"
-                self.selectedShape = None
+                self.selectedShape.velocity=calcMouseVelocity((oldX,oldY), (newX, newY))
+
         self.Refresh()
 
     def OnTimer(self, e):
@@ -313,15 +335,30 @@ class Frame(wx.Frame):
         for i in self.shapes:
             i.updatePosition()
             i.drawself(dc)
-            
+
+        if self.selectedShape != None:
+            (x,y) = self.selectedShape.position
+            self.targetShapes = [s for s in self.shapes if s.contains(x, y) and s is not self.selectedShape]
+            if len(self.targetShapes) > 0:
+                self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
+                s=self.targetShapes[0]
+                eventlog.info("TARGET SHAPE : %s", s)
+                try:
+                    if s.isDropTarget:
+                        eventlog.info("DO SOMETHING WITH THE COLLISION EVENT")
+                    else:
+                        eventlog.info("COLLISION BUT %s is not a drop target ", s)
+                    #motionlog.debug("DROPPED")
+
+                except:
+                    eventlog.info("NO TARGET SHAPE")
+
 def main():
     app = wx.App(redirect=False)
     top = Frame(None, "Okane", size=(620, 620))
     top.Show()
     app.MainLoop()
-    
+
 if __name__ == "__main__":
     random.seed()
     main()
-    
-            
