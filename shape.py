@@ -71,14 +71,14 @@ class Shape(Particle):
         self.isClicked = self.isRightClicked = False
         self.zOrder = Shape.nextZOrder()
         self.frameState = "NORMAL"
-        self.label = "UNTITLED"        
+        self.label = "UNTITLED"
         self.fillColour = (0, 0, 0)
         self.isDropTarget = droptarget
         #velocity = vel
         #self.mass = mass
 
     def __repr__(self):
-        return "Shape(bounds=%r)" % (self.getBounds()) 
+        preturn "Shape(bounds=%r)" % (self.getBounds())
 
     def contains(self):
         raise NotImplementedError
@@ -119,14 +119,14 @@ class Circle(Shape):
             dc.SetPen(wx.Pen("GRAY",1))
             dc.SetBrush(wx.Brush((70,70,70), wx.SOLID))
         if self.frameState == "NORMAL":
-            dc.SetPen(wx.Pen("BLACK",1))            
+            dc.SetPen(wx.Pen("BLACK",1))
             if self.isClicked or self.isRightClicked:
                 dc.SetBrush(wx.Brush((30,30,30), wx.SOLID))
-            else:            
+            else:
                 dc.SetBrush(wx.Brush(self.fillColour, wx.SOLID))
         dc.DrawCircle(self.position[0], self.position[1], self.rad)
         dc.EndDrawing()
-    
+
 class RandomCircle(Circle):
     def __init__(self, startMoving=False):
         self.position = (random.randrange(300), random.randrange(300))
@@ -140,7 +140,7 @@ class RandomCircle(Circle):
 
 class Rect(Shape):
     def __init__(self, pos, size, droptarget=False, **kwargs):
-        Shape.__init__(self, pos, size, droptarget=droptarget, **kwargs) 
+        Shape.__init__(self, pos, size, droptarget=droptarget, **kwargs)
 
     def getBounds(self):
         # motionlog.debug("Params: x: %s y: %s width: %s height: %s" % (self.position[0], self.position[1], self.size[0], self.size[1]))
@@ -160,14 +160,14 @@ class Rect(Shape):
             dc.SetPen(wx.Pen("GRAY",1))
             dc.SetBrush(wx.Brush((30,30,30), wx.SOLID))
         if self.frameState == "NORMAL":
-            dc.SetPen(wx.Pen("BLACK",1))            
+            dc.SetPen(wx.Pen("BLACK",1))
             if self.isClicked:
                 dc.SetBrush(wx.Brush((30,30,30), wx.SOLID))
-            else:            
+            else:
                 dc.SetBrush(wx.Brush(self.fillColour, wx.SOLID))
         dc.DrawRectangle(self.position[0], self.position[1], self.size[0], self.size[1])
         dc.EndDrawing()
-        
+
 class RandomRect(Rect):
     def __init__(self, droptarget=False, startMoving=False):
         self.position = (random.randrange(300), random.randrange(300))
@@ -228,7 +228,7 @@ class Frame(wx.Frame):
                 if len(self.clickedShapes) > 1:
                     return self.clickedShapes[1]
             else:
-                try: 
+                try:
                     clicked = self.clickedShapes[0]
                     return clicked
                 except:
@@ -243,7 +243,7 @@ class Frame(wx.Frame):
                 if len(self.rightClickedShapes) > 1:
                     return self.rightClickedShapes[1]
             else:
-                try: 
+                try:
                     clicked = self.rightClickedShapes[0]
                     return clicked
                 except:
@@ -255,7 +255,7 @@ class Frame(wx.Frame):
         newX, newY = e.GetPosition()
         if self.frameState == "POSSIBLE_LEFT_DRAG" and e.LeftIsDown():
             self.frameState = self.selectedShape.state = "LEFT_DRAGGING"
-        elif self.frameState == "LEFT_DRAGGING" and e.LeftIsDown(): 
+        elif self.frameState == "LEFT_DRAGGING" and e.LeftIsDown():
             # or ((self.frameState == "RIGHT_DRAGGING" and e.RightIsDown()):
             oldX, oldY = self.lastMovePosition
             deltaX = newX - oldX

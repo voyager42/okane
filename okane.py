@@ -21,13 +21,12 @@ import logging.config
 import math
 
 
-logging.config.fileConfig('logging.conf')
+logging.basicConfig(level=logging.WARN)
 motionlog=logging.getLogger('motion')
-motionlog.setLevel(logging.DEBUG)
+motionlog.setLevel("WARN")
 
 eventlog = logging.getLogger('event')
-eventlog.setLevel(logging.INFO)
-
+eventlog.setLevel("INFO")
 wildcard = "CSV files (*.csv)|*.csv|" \
             "All files (*.*)|*.*"
 
@@ -50,7 +49,6 @@ class Frame(wx.Frame):
         wx.Frame.__init__(self, parent, wx.ID_ANY, title, wx.DefaultPosition, size)
         self.Bind(wx.EVT_PAINT, self.OnPaint)
         self.Bind(wx.EVT_TIMER, self.OnTimer)
-        self.Bind(wx.EVT_PAINT, self.OnPaint)
         self.Bind(wx.EVT_LEFT_DOWN, self.OnClick)
         self.Bind(wx.EVT_RIGHT_DOWN, self.OnClick)
         self.Bind(wx.EVT_LEFT_UP, self.OnRelease)
@@ -83,6 +81,9 @@ class Frame(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnOpen, m_open)
         self.Bind(wx.EVT_MENU, self.OnClose, m_exit)
         self.Bind(wx.EVT_CLOSE, self.OnClose)
+        self.Bind(wx.EVT_SIZE, self.OnSize)
+
+
         #self.Bind(wx.EVT_LEFT_UP, self.OnClick)
 
         self.transactionList = []
@@ -94,15 +95,15 @@ class Frame(wx.Frame):
         self.clickedShapes = list()
         self.rightClickedShapes = list()
         self.timer = wx.Timer(self)
-        self.timer.Start(10)
+        self.timer.Start(100)
         self.shapes = list()
         self.clickedShapes = list()
         self.rightClickedShapes = list()
         self.frameState="NORMAL"
         #self.generateShapes()
-#        t = Rect((10,10),(70,70))
+        t = transaction.Bucket(pos=(10,10), size=(70,70), amt=0, desc="Bucket", cat="test", droptarget=True)
         #t = Shapes.RandomRect()
-        #self.shapes.append(t)
+        self.shapes.append(t)
  #       t = Rect((0,0), (30,30))
         #t = Shapes.RandomRect()
         #self.shapes.append(t)
@@ -137,7 +138,6 @@ class Frame(wx.Frame):
             "Do you really want to close this application?",
             "Confirm Exit", wx.OK|wx.CANCEL|wx.ICON_QUESTION)
         result = dlg.ShowModal()
-        dlg.Destroy()
         if result == wx.ID_OK:
             self.Destroy()
 
@@ -156,17 +156,12 @@ class Frame(wx.Frame):
         dlg.Destroy()
         self.Refresh()
 
-
-    # def OnClick(self, event):
-    #     print "Frame OnClick"
-    #     self.controller.onClick(event)
-
-######################################################3
-    # def generateShapes(self):
-    #     for i in range(10):
-    #         self.shapes.append(RandomRect(startMoving=True))
-    #     for i in range(10):
-    #         self.shapes.append(RandomCircle(startMoving=True))
+    def OnSize(self, event):
+        print "ON SIZE"
+        hsize = event.GetSize()[0] * 0.75
+        self.SetSizeHints(minW=-1, minH=hsize, maxH=hsize)
+        self.SetTitle(str(event.GetSize()))
+        self.Refresh()
 
     def isLeftClick(self, e):
         return (e.GetButton() == wx.MOUSE_BTN_LEFT)
@@ -180,6 +175,7 @@ class Frame(wx.Frame):
             self.clickedShapes = [s for s in self.shapes if s.contains(x, y)]
             self.clickedShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
             eventlog.info("clickedShapes: %s" % (self.clickedShapes))
+
             if e.ShiftDown():
                 if len(self.clickedShapes) > 1:
                     return self.clickedShapes[1]
@@ -236,6 +232,8 @@ class Frame(wx.Frame):
             del self.clickedShapes[:]
             # motionlog.debug("OnClick (%s, %s)" % (x, y)
             self.selectedShape = self.guessSelectedShape(e)
+            eventlog.info("%s", self.selectedShape)
+            self.statusbar.SetStatusText("%r" %(self.selectedShape))
             try:
                 self.selectedShape.isClicked=True
                 self.frameState = self.selectedShape.state = "POSSIBLE_LEFT_DRAG"
@@ -263,55 +261,56 @@ class Frame(wx.Frame):
             oldX, oldY = self.lastPosition
             deltaX = newX - oldX
             deltaY = newY - oldY
-            if self.selectedShape != None:
-                eventlog.info("RELEASING SELECTED SHAPE")
-                self.targetShapes = [s for s in self.shapes if s is not self.selectedShape and s.contains(newX, newY)]
-                if len(self.targetShapes) > 0:
-                    self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
-                    s=self.targetShapes[0]
-                    eventlog.info("TARGET SHAPE : %s", s)
-                    try:
-                        if s.isDropTarget:
-                            eventlog.info("DO SOMETHING WITH THE DROPPED OBJECT")
-                        else:
-                            eventlog.info("%s is not a drop target ", s)
-                        #motionlog.debug("DROPPED")
-                            self.selectedShape.state="NORMAL"
-                            self.frameState="NORMAL"
-                    except:
-                        eventlog.info("NO TARGET SHAPE")
-                self.selectedShape.isClicked = False
-                self.selectedShape.state="NORMAL"
-                self.frameState="NORMAL"
-                self.selectedShape.velocity=calcMouseVelocity((oldX,oldY), (newX, newY))
-
         self.Refresh()
 
     def OnTimer(self, e):
+        for i in self.shapes:
+            i.updatePosition()
+            (x,y) = i.position
+            self.targetShapes = [s for s in self.shapes if s.contains(x, y) and s is not i and i.isVisible()]
+            if len(self.targetShapes) > 0:
+                self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
+                s=self.targetShapes[0]
+                eventlog.info("TARGET SHAPE : %s", s)
+#                try:
+                if s.isDropTarget:
+                    eventlog.info("DO SOMETHING WITH THE COLLISION EVENT")
+                    s.add(i.amt)
+                    i.container=s
+                    i.hide()
+                else:
+                    eventlog.info("COLLISION BUT %s is not a drop target ", s)
+                motionlog.debug("DROPPED")
+
+ #               except:
+ #                   eventlog.info("NO TARGET SHAPE")
+
         self.Refresh()
 
     def OnPaint(self, e):
         dc = wx.PaintDC(self)
         for i in self.shapes:
-            i.updatePosition()
             i.drawself(dc)
 
-        if self.selectedShape != None:
-            (x,y) = self.selectedShape.position
-            self.targetShapes = [s for s in self.shapes if s.contains(x, y) and s is not self.selectedShape]
-            if len(self.targetShapes) > 0:
-                self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
-                s=self.targetShapes[0]
-                eventlog.info("TARGET SHAPE : %s", s)
-                try:
-                    if s.isDropTarget:
-                        eventlog.info("DO SOMETHING WITH THE COLLISION EVENT")
-                    else:
-                        eventlog.info("COLLISION BUT %s is not a drop target ", s)
-                    #motionlog.debug("DROPPED")
 
-                except:
-                    eventlog.info("NO TARGET SHAPE")
+        # if self.selectedShape != None:
+        #     (x,y) = self.selectedShape.position
+        #     self.targetShapes = [s for s in self.shapes if s.contains(x, y) and s is not self.selectedShape]
+        #     if len(self.targetShapes) > 0:
+        #         self.targetShapes.sort(key=lambda shape: shape.zOrder, reverse=True)
+        #         s=self.targetShapes[0]
+        #         eventlog.info("TARGET SHAPE : %s", s)
+        #         try:
+        #             if s.isDropTarget:
+        #                 eventlog.info("DO SOMETHING WITH THE COLLISION EVENT")
+        #                 s.add(self.selectedShape.amt)
+        #                 self.selectedShape.container=s
+        #             else:
+        #                 eventlog.info("COLLISION BUT %s is not a drop target ", s)
+        #             motionlog.debug("DROPPED")
+
+        #         except:
+        #             eventlog.info("NO TARGET SHAPE")
 
 
 def main():

@@ -5,8 +5,8 @@ import math
 import cmath
 import logging
 import logging.config
-
-logging.config.fileConfig('logging.conf')
+logging.basicConfig(level=logging.INFO)
+#logging.config.fileConfig('logging.conf')
 motionlog=logging.getLogger('motion')
 motionlog.setLevel(logging.DEBUG)
 
@@ -46,7 +46,7 @@ class Shape(Particle):
     """Represents a basic shape"""
     nextZOrder = itertools.count().next
 
-    def __init__(self, pos, size, droptarget=False, velocity=(0,0)):
+    def __init__(self, pos, size, droptarget=False, velocity=(0,0), visible=True):
         self.size = size
         self.isClicked = self.isRightClicked = False
         self.zOrder = Shape.nextZOrder()
@@ -54,6 +54,7 @@ class Shape(Particle):
         self.label = "UNTITLED"
         self.fillColour = (0, 0, 0)
         self.isDropTarget = droptarget
+        self.visible = visible
         #velocity = vel
         #self.mass = mass
         Particle.__init__(self, pos=pos, velocity=velocity)
@@ -72,6 +73,15 @@ class Shape(Particle):
 
     def drawSelf(self):
         raise NotImplementedError
+
+    def isVisible(self):
+        return (self.visible==True)
+
+    def hide(self):
+        self.visible = False
+
+    def show(self):
+        self.visible = True
 
 class Text(Shape):
     '''Represents some text'''
@@ -147,18 +157,19 @@ class Rect(Shape):
         return "Rect(x=%r, y=%r, width=%r, height=%r, droptarget=%r)" % (self.position[0], self.position[1], self.size[0], self.size[1], self.isDropTarget)
 
     def drawself(self, dc):
-        dc.BeginDrawing()
-        if self.frameState == "LEFT_DRAGGING": # state should include clicked status too
-            dc.SetPen(wx.Pen("GRAY",1))
-            dc.SetBrush(wx.Brush((30,30,30), wx.SOLID))
-        if self.frameState == "NORMAL":
-            dc.SetPen(wx.Pen("BLACK",1))
-            if self.isClicked:
+        if self.isVisible():
+            dc.BeginDrawing()
+            if self.frameState == "LEFT_DRAGGING": # state should include clicked status too
+                dc.SetPen(wx.Pen("GRAY",1))
                 dc.SetBrush(wx.Brush((30,30,30), wx.SOLID))
-            else:
-                dc.SetBrush(wx.Brush(self.fillColour, wx.SOLID))
-        dc.DrawRectangle(self.position[0], self.position[1], self.size[0], self.size[1])
-        dc.EndDrawing()
+            if self.frameState == "NORMAL":
+                dc.SetPen(wx.Pen("BLACK",1))
+                if self.isClicked:
+                    dc.SetBrush(wx.Brush((30,30,30), wx.SOLID))
+                else:
+                    dc.SetBrush(wx.Brush(self.fillColour, wx.SOLID))
+            dc.DrawRectangle(self.position[0], self.position[1], self.size[0], self.size[1])
+            dc.EndDrawing()
 
 class RandomRect(Rect):
     def __init__(self, droptarget=False, startMoving=False):
